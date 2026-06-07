@@ -39,10 +39,11 @@ function fetchKline(code) {
   });
 }
 
-function httpGetPlain(url) {
+function httpGetPlain(url, extraHeaders) {
   const mod = url.startsWith('https') ? https : http;
+  const opts = Object.assign({ rejectUnauthorized: false }, extraHeaders ? { headers: extraHeaders } : {});
   return new Promise((resolve, reject) => {
-    mod.get(url, { rejectUnauthorized: false }, (res) => {
+    mod.get(url, opts, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve(data));
@@ -71,6 +72,87 @@ function fetchTotalShares(code) {
   });
 }
 
+// 交叉验证：对比腾讯 vs 东方财富数据
+async function verifyKlineData(code, name, kline, shares) {
+  const prefix = code.startsWith('sz') ? '0.' : '1.';
+  const emUrl = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${prefix}${code.substring(2)}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&lmt=50`;
+
+  try {
+    const emRaw = await httpGetPlain(emUrl, { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://quote.eastmoney.com/' });
+    if (!emRaw) throw new Error('no response');
+
+    const emData = JSON.parse(emRaw);
+    const emKlines = (emData.data?.klines || []).map(r => {
+      const p = r.split(',');
+      return { date: p[0], close: parseFloat(p[2]) };
+    });
+
+    if (emKlines.length === 0) throw new Error('empty data');
+
+    // 建立腾讯数据日期索引
+    const txMap = {};
+    kline.forEach(r => { txMap[r.date] = r.close; });
+
+    // 取5个均匀分布的日期做抽查
+    const commonDates = emKlines.filter(r => txMap[r.date]);
+    const step = Math.max(1, Math.floor(commonDates.length / 5));
+    const spotChecks = [];
+    let maxDiff = 0;
+    for (let i = 0; spotChecks.length < 5 && i < commonDates.length; i += step) {
+      const r = commonDates[i];
+      const diff = Math.abs(txMap[r.date] - r.close);
+      if (diff > maxDiff) maxDiff = diff;
+      spotChecks.push({ date: r.date, tx: txMap[r.date], em: r.close, diff });
+    }
+
+    // 对比：东方财富(前复权)用严格阈值；新浪(不复权)用相对阈值
+    const isEm = true;
+    const avgPrice = spotChecks.reduce((s, c) => s + c.tx, 0) / spotChecks.length;
+    const threshold = Math.max(0.02, avgPrice * 0.001);
+    const ok = maxDiff <= threshold;
+    console.log('  🔍 交叉验证(' + name + '): 腾讯 vs 东方财富, ' + spotChecks.length + '点抽查, 最大差异' + maxDiff.toFixed(4) + '元 ' + (ok ? '✅' : '⚠️'));
+    if (!ok) {
+      spotChecks.filter(s => s.diff > 0.01).forEach(s => {
+        console.log('     ⚠️ ' + s.date + ' 腾讯' + s.tx.toFixed(2) + ' vs 东方' + s.em.toFixed(2) + ' 差' + s.diff.toFixed(4));
+      });
+    }
+  } catch (e) {
+    console.log('  🔍 交叉验证(' + name + '): 东方财富不可达, 改用新浪财经验证...');
+    // Fallback: Sina
+    try {
+      const sinaUrl = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${code}&scale=240&ma=no&datalen=50`;
+      const sinaRaw = await httpGetPlain(sinaUrl, { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://finance.sina.com.cn' });
+      if (!sinaRaw) throw new Error('no sina response');
+
+      const sinaData = JSON.parse(sinaRaw);
+      if (sinaData.length === 0) throw new Error('empty sina data');
+
+      const txMap = {};
+      kline.forEach(r => { txMap[r.date] = r.close; });
+
+      // Sina near-recent dates (2025-06+ avoids any recent split effects)
+      const recentSina = sinaData.filter(r => r.day >= '2025-06-01' && txMap[r.day]);
+      const spotChecks = [];
+      let maxDiff = 0;
+      const step = Math.max(1, Math.floor(recentSina.length / 5));
+      for (let i = 0; spotChecks.length < 5 && i < recentSina.length; i += step) {
+        const r = recentSina[i];
+        const sc = parseFloat(r.close);
+        const diff = Math.abs(txMap[r.day] - sc);
+        if (diff > maxDiff) maxDiff = diff;
+        spotChecks.push({ date: r.day, tx: txMap[r.day], sina: sc, diff });
+      }
+
+      const avgPrice2 = spotChecks.reduce((s, c) => s + c.tx, 0) / spotChecks.length;
+      const threshold2 = Math.max(0.05, avgPrice2 * 0.002); // 新浪不复权，放宽阈值
+      const ok2 = maxDiff <= threshold2;
+      console.log('  🔍 交叉验证(' + name + '): 腾讯 vs 新浪, ' + spotChecks.length + '点抽查, 最大差异' + maxDiff.toFixed(4) + '元 ' + (ok2 ? '✅' : '⚠️'));
+    } catch (e2) {
+      console.log('  ⚠️ 交叉验证(' + name + '): 无可用的第二数据源, 仅使用腾讯数据');
+    }
+  }
+}
+
 async function main() {
   console.log('正在获取 ' + name1 + '(' + fullCode1 + ') 数据...');
   console.log('正在获取 ' + name2 + '(' + fullCode2 + ') 数据...');
@@ -84,6 +166,10 @@ async function main() {
 
   console.log(name1 + ': ' + kline1.length + ' 个交易日, 总股本 ' + (shares1 / 1e8).toFixed(2) + ' 亿股');
   console.log(name2 + ': ' + kline2.length + ' 个交易日, 总股本 ' + (shares2 / 1e8).toFixed(2) + ' 亿股');
+
+  // 交叉验证数据准确性
+  await verifyKlineData(fullCode1, name1, kline1, shares1);
+  await verifyKlineData(fullCode2, name2, kline2, shares2);
 
   if (shares1 === 0 || shares2 === 0) {
     console.error('Error: Could not determine total shares for one or both stocks');

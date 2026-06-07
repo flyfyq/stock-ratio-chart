@@ -17,7 +17,7 @@
 
 ### 安装
 ```bash
-git clone https://github.com/YOUR_USERNAME/stock-ratio-chart.git
+git clone https://gitee.com/fly_fyq/stock-ratio-chart.git
 cd stock-ratio-chart
 npm install  # 无额外依赖，仅需 Node.js 内置模块
 ```

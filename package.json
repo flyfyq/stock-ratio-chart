@@ -1,0 +1,32 @@
+{
+  "name": "stock-ratio-chart",
+  "version": "1.0.0",
+  "description": "Generate interactive market cap ratio trend chart for any two A-share stocks",
+  "main": "stock_ratio_chart.js",
+  "bin": {
+    "stock-ratio-chart": "./stock_ratio_chart.js"
+  },
+  "scripts": {
+    "start": "node stock_ratio_chart.js"
+  },
+  "keywords": [
+    "stock",
+    "market-cap",
+    "ratio",
+    "chart",
+    "a-shares",
+    "china-stocks",
+    "echarts",
+    "finance",
+    "visualization"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

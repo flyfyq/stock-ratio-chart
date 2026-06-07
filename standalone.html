@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>股票市值比值趋势图</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #f5f6f8; min-height: 100vh; }
+  .container { width: 75%; margin: 0 auto; padding: 20px 24px; }
+  .header { text-align: center; margin-bottom: 28px; }
+  .header h1 { font-size: 24px; color: #1a1a1a; margin-bottom: 6px; }
+  .header p { font-size: 13px; color: #999; }
+  .input-card { background: #fff; border-radius: 12px; padding: 28px 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; }
+  .input-row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+  .input-group { flex: 1; min-width: 200px; }
+  .input-group label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
+  .input-group input { width: 100%; height: 44px; padding: 0 14px; border: 1.5px solid #e0e0e0; border-radius: 8px; font-size: 15px; color: #333; outline: none; transition: border-color .2s; }
+  .input-group input:focus { border-color: #1890ff; }
+  .input-group .hint { font-size: 11px; color: #bbb; margin-top: 4px; }
+  .btn-group { flex-shrink: 0; }
+  .btn-group label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; visibility: hidden; }
+  .btn-row-inline { display: flex; gap: 8px; align-items: center; }
+  .btn { height: 44px; padding: 0 28px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .btn-primary { background: #1890ff; color: #fff; }
+  .btn-primary:hover { background: #40a9ff; }
+  .btn-primary:disabled { background: #b0d4ff; cursor: not-allowed; }
+  .btn-swap { background: #f0f0f0; color: #666; padding: 0 16px; font-size: 18px; line-height: 44px; }
+  .btn-swap:hover { background: #e0e0e0; }
+  .stats-card { background: #fff; border-radius: 12px; padding: 20px 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; display: none; gap: 30px; flex-wrap: wrap; justify-content: center; }
+  .stats-card.show { display: flex; }
+  .stat-item { text-align: center; min-width: 110px; }
+  .stat-val { font-size: 24px; font-weight: 700; color: #1890ff; }
+  .stat-label { font-size: 12px; color: #999; margin-top: 2px; }
+  .chart-card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; display: none; }
+  .chart-card.show { display: block; }
+  #chart { width: 100%; height: 600px; }
+  .verify-bar { text-align: center; padding: 10px 20px; font-size: 13px; }
+  .verify-bar.ok { color: #52c41a; }
+  .verify-bar.warning { color: #faad14; }
+  .verify-bar.error { color: #ff4d4f; }
+  .footer { text-align: center; color: #ccc; font-size: 11px; padding: 8px 20px 16px; }
+  .loading-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.7); z-index: 200; justify-content: center; align-items: center; }
+  .loading-overlay.show { display: flex; }
+  .spinner { width: 42px; height: 42px; border: 3px solid #e0e0e0; border-top-color: #1890ff; border-radius: 50%; animation: spin .8s linear infinite; }
+  .toast { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); background: #ff4d4f; color: #fff; padding: 10px 24px; border-radius: 8px; font-size: 14px; z-index: 300; display: none; }
+  .toast.show { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 768px) { .input-row { flex-direction: column; } .container { width: 100%; padding: 16px 10px; } .btn-group label { display: none; } .btn-group { width: 100%; } .btn-row-inline { justify-content: center; } #chart { height: 400px; } }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>📊 股票市值比值趋势图</h1>
+    <p>输入两只 A 股代码，对比历史市值比值走势</p>
+  </div>
+
+  <div class="input-card">
+    <div class="input-row">
+      <div class="input-group">
+        <label>股票一</label>
+        <input type="text" id="stock1" placeholder="如: 300308 中际旭创" autocomplete="off">
+        <div class="hint">输入6位代码，如 300308</div>
+      </div>
+      <div class="input-group">
+        <label>股票二</label>
+        <input type="text" id="stock2" placeholder="如: 300502 新易盛" autocomplete="off">
+        <div class="hint">输入6位代码，如 300502</div>
+      </div>
+      <div class="btn-group">
+        <label>&nbsp;</label>
+        <div class="btn-row-inline">
+          <button class="btn btn-swap" onclick="swapStocks()" title="交换">⇄</button>
+          <button class="btn btn-primary" id="btnGenerate" onclick="generate()">生成图表</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-card" id="statsCard">
+    <div class="stat-item"><div class="stat-val" id="sCurrent">-</div><div class="stat-label">最新比值</div></div>
+    <div class="stat-item"><div class="stat-val" id="sMax">-</div><div class="stat-label">区间最高</div></div>
+    <div class="stat-item"><div class="stat-val" id="sMin">-</div><div class="stat-label">区间最低</div></div>
+    <div class="stat-item"><div class="stat-val" id="sAvg">-</div><div class="stat-label">区间均值</div></div>
+  </div>
+
+  <div class="chart-card" id="chartCard">
+    <div id="chart"></div>
+  </div>
+
+  <div class="verify-bar" id="verifyBar" style="display:none"><span id="verifyText"></span></div>
+  <div class="footer">数据来源：腾讯财经 / 新浪财经 | 双数据源交叉验证 | 市值 = 前复权 × 总股本</div>
+</div>
+
+<div class="loading-overlay" id="loading"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+let stock1Data = null, stock2Data = null, myChart = null;
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function showLoading() { document.getElementById('loading').classList.add('show'); }
+function hideLoading() { document.getElementById('loading').classList.remove('show'); }
+
+function parseCode(val) {
+  val = val.trim().replace(/\s.*/, '');
+  if (/^\d{6}$/.test(val)) return (val.startsWith('6') || val.startsWith('5')) ? 'sh' + val : 'sz' + val;
+  if (/^[sS][zZ]\d{6}$/.test(val)) return val.toLowerCase();
+  if (/^[sS][hH]\d{6}$/.test(val)) return val.toLowerCase();
+  return null;
+}
+
+function swapStocks() {
+  const i1 = document.getElementById('stock1'), i2 = document.getElementById('stock2');
+  const t = i1.value; i1.value = i2.value; i2.value = t;
+  const d = stock1Data; stock1Data = stock2Data; stock2Data = d;
+  if (document.getElementById('chartCard').classList.contains('show')) generate();
+}
+
+// 腾讯 Kline API (CORS enabled)
+async function fetchTxKline(code) {
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,1200,qfq`;
+  const resp = await fetch(url);
+  const json = await resp.json();
+  const stockData = json.data?.[code];
+  const klines = stockData?.qfqday || stockData?.day || [];
+  if (!klines.length) throw new Error('无数据');
+  // Parse total shares from qt field
+  const qtArr = stockData?.qt?.[code];
+  let totalShares = 0;
+  if (qtArr) {
+    for (let i = 0; i < qtArr.length; i++) {
+      const v = parseInt(qtArr[i], 10);
+      if (!isNaN(v) && v > 50000000 && v < 50000000000 && v > totalShares) totalShares = v;
+    }
+  }
+  // Get stock name from qt
+  let name = qtArr?.[1] || code;
+  return { name, code, totalShares, klines: klines.map(r => ({ date: r[0], close: parseFloat(r[2]) })) };
+}
+
+// 新浪验证
+async function verifyWithSina(code, txKlines) {
+  const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${code}&scale=240&ma=no&datalen=100`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (!data.length) return { status: 'warning', msg: '新浪无数据' };
+
+  const txMap = {};
+  txKlines.forEach(r => { txMap[r.date] = r.close; });
+  const common = data.filter(r => r.day >= '2025-06-01' && txMap[r.day]);
+  if (!common.length) return { status: 'warning', msg: '无重叠日期' };
+
+  const step = Math.max(1, Math.floor(common.length / 5));
+  let maxDiff = 0;
+  const checks = [];
+  for (let i = 0; checks.length < 5 && i < common.length; i += step) {
+    const sc = parseFloat(common[i].close);
+    const tc = txMap[common[i].day];
+    const diff = Math.abs(tc - sc);
+    if (diff > maxDiff) maxDiff = diff;
+    checks.push({ date: common[i].day, tx: tc, sina: sc, diff });
+  }
+  const avgPrice = checks.reduce((s, c) => s + c.tx, 0) / checks.length;
+  const threshold = Math.max(0.05, avgPrice * 0.002);
+  return maxDiff <= threshold
+    ? { status: 'ok', msg: `✅ 验证通过 (vs 新浪，${checks.length}点，差异≤${maxDiff.toFixed(3)}元)`, checks, maxDiff }
+    : { status: 'warning', msg: `⚠️ 存在差异 (vs 新浪，差异${maxDiff.toFixed(3)}元)`, checks, maxDiff };
+}
+
+async function generate() {
+  const v1 = document.getElementById('stock1').value.trim();
+  const v2 = document.getElementById('stock2').value.trim();
+  if (!v1 || !v2) { showToast('请输入两只股票代码'); return; }
+
+  const c1 = parseCode(v1), c2 = parseCode(v2);
+  if (!c1) { showToast('无效代码: ' + v1); return; }
+  if (!c2) { showToast('无效代码: ' + v2); return; }
+
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = true; btn.textContent = '加载中...'; showLoading();
+
+  try {
+    const [d1, d2] = await Promise.all([fetchTxKline(c1), fetchTxKline(c2)]);
+    const n1 = d1.name, n2 = d2.name;
+
+    console.log(`${n1}: ${d1.klines.length}天, 股本${(d1.totalShares/1e8).toFixed(2)}亿`);
+    console.log(`${n2}: ${d2.klines.length}天, 股本${(d2.totalShares/1e8).toFixed(2)}亿`);
+
+    const map2 = {};
+    d2.klines.forEach(r => { map2[r.date] = r.close; });
+
+    const ratios = [];
+    d1.klines.forEach(r => {
+      const c = map2[r.date];
+      if (!c) return;
+      ratios.push({ date: r.date, ratio: r.close * d1.totalShares / (c * d2.totalShares) });
+    });
+
+    if (ratios.length < 10) { showToast('有效数据太少'); return; }
+
+    // Markers every 3 months
+    let [fy, fm] = ratios[0].date.split('-').map(Number);
+    fm = Math.ceil(fm / 3) * 3;
+    if (fm > 12) { fm -= 12; fy++; }
+    const markers = [];
+    let year = fy, month = fm;
+    while (true) {
+      const prefix = year + '-' + String(month).padStart(2, '0');
+      if (prefix > ratios[ratios.length-1].date) break;
+      let best = null;
+      for (const r of ratios) { if (r.date.startsWith(prefix) && (!best || r.date < best.date)) best = r; }
+      if (!best) { for (const r of ratios) { if (r.date >= prefix+'-01' && !best) best = r; } }
+      if (best && !markers.find(m => m.date === best.date)) markers.push(best);
+      month += 3;
+      if (month > 12) { month -= 12; year++; }
+    }
+
+    const dates = ratios.map(r => r.date);
+    const vals = ratios.map(r => r.ratio);
+    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const maxV = Math.max(...vals), minV = Math.min(...vals), cur = vals[vals.length-1];
+
+    document.getElementById('sCurrent').textContent = cur.toFixed(2);
+    document.getElementById('sMax').textContent = maxV.toFixed(2);
+    document.getElementById('sMin').textContent = minV.toFixed(2);
+    document.getElementById('sAvg').textContent = avg.toFixed(2);
+    document.getElementById('statsCard').classList.add('show');
+    document.getElementById('chartCard').classList.add('show');
+
+    // Chart
+    if (myChart) { myChart.dispose(); myChart = null; }
+    myChart = echarts.init(document.getElementById('chart'));
+
+    const markPoints = markers.map(m => ({
+      coord: [m.date, m.ratio],
+      symbol: 'pin', symbolSize: 48,
+      itemStyle: { color: m.ratio >= 2 ? '#ff4d4f' : m.ratio >= 1.5 ? '#faad14' : '#52c41a' },
+      label: { show: true, color: '#fff', fontSize: 10, fontWeight: 'bold', backgroundColor: '#000', padding: [4,8], borderRadius: 4, formatter: m.date.substring(0,7)+'  '+m.ratio.toFixed(2) }
+    }));
+
+    const option = {
+      backgroundColor: '#fff',
+      tooltip: { trigger: 'axis', backgroundColor: '#fff', borderColor: '#d9d9d9', textStyle: { color: '#333', fontSize: 13 },
+        formatter: ps => { const d=ps[0].axisValue, v=ps[0].value; return v>1 ? `<b>${d}</b><br/>市值比值: <b style="color:#1890ff;font-size:16px">${v.toFixed(3)}</b><br/>${n1} = ${n2} × ${v.toFixed(2)}` : `<b>${d}</b><br/>市值比值: <b style="color:#1890ff;font-size:16px">${v.toFixed(3)}</b><br/>${n2} = ${n1} × ${(1/v).toFixed(2)}`; } },
+      grid: { left: 65, right: 50, top: 50, bottom: 55 },
+      xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#ccc' } }, axisLabel: { color: '#888', fontSize: 10, rotate: 45, formatter: v => { const p=v.split('-'); if(p[2]==='01'&&p[1]==='01')return p[0]; if(p[2]==='01')return v.substring(0,7); return ''; } }, splitLine: { show: false }, axisTick: { show: false } },
+      yAxis: { type: 'value', name: '市值比值', nameTextStyle: { color: '#666', fontSize: 12 }, axisLabel: { color: '#888', fontSize: 11 }, axisLine: { lineStyle: { color: '#ccc' } }, splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } }, min: minV > 0.85 ? 1 : Math.max(0, Math.floor(minV*10)/10-0.1) },
+      dataZoom: [{ type: 'inside', start: 0, end: 100 }, { type: 'slider', start: 0, end: 100, height: 25, bottom: 8, borderColor: '#d9d9d9', backgroundColor: '#fafafa', fillerColor: 'rgba(24,144,255,0.2)', textStyle: { color: '#888' } }],
+      series: [{ type: 'line', data: vals, smooth: true, symbol: 'none', lineStyle: { color: '#1890ff', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1, [{offset:0,color:'rgba(24,144,255,0.15)'},{offset:1,color:'rgba(24,144,255,0.02)'}]) }, markLine: { silent: true, symbol: 'none', data: [{ yAxis: avg, lineStyle: { color: '#faad14', type: 'solid', width: 2 }, label: { color: '#d48806', fontSize: 11, formatter: '均值 '+avg.toFixed(2), position: 'end' } }] }, markPoint: { data: markPoints } }]
+    };
+    myChart.setOption(option, { notMerge: true });
+    myChart.resize();
+
+    // Async verify
+    verifyWithSina(c1, d1.klines).then(r1 => {
+      verifyWithSina(c2, d2.klines).then(r2 => {
+        const bar = document.getElementById('verifyBar'), txt = document.getElementById('verifyText');
+        bar.style.display = 'block';
+        const allOk = r1.status === 'ok' && r2.status === 'ok';
+        bar.className = 'verify-bar ' + (allOk ? 'ok' : 'warning');
+        txt.textContent = allOk ? '✅ 双数据源交叉验证通过' : r1.msg + ' | ' + r2.msg;
+        let detail = '';
+        [r1, r2].forEach(r => { if (r.checks) { r.checks.forEach(c => { detail += c.date + ' 腾讯' + c.tx.toFixed(2) + ' vs 新浪' + c.sina.toFixed(2) + ' 差' + c.diff.toFixed(4) + '\\n'; }); } });
+        if (detail) { txt.title = detail; txt.style.cursor = 'help'; }
+      });
+    });
+
+  } catch (e) {
+    console.error(e); showToast('出错: ' + e.message);
+  } finally {
+    hideLoading(); btn.disabled = false; btn.textContent = '生成图表';
+  }
+}
+
+// URL params support
+(function() {
+  const sp = new URLSearchParams(location.search);
+  if (sp.get('s1') && sp.get('s2')) {
+    document.getElementById('stock1').value = sp.get('s1');
+    document.getElementById('stock2').value = sp.get('s2');
+    setTimeout(generate, 500);
+  }
+})();
+document.addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') generate(); });
+window.addEventListener('resize', () => { if (myChart) myChart.resize(); });
+</script>
+</body>
+</html>
